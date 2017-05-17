@@ -8,6 +8,7 @@
 \usepackage{tocloft}
 \usepackage{natbib}
 \usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{subcaption}
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 
@@ -109,7 +110,7 @@
 
 \subsection{Introduction}
 
-The fusion of data from two or more sensors has been well-researched \textit{citations needed}, though these approaches typically discuss the process of fusing images which have been pre-aligned. Pre-computed transforms used to align the frames of two cameras are not robust to variations. Some approaches have made use of additional hardware sensors in order to correct against these variations \cite{chappell_exploiting_2006}. The approach presented in this thesis seeks to perform this correction completely in hardware on a FPGA.
+The fusion of data from two or more sensors has been well-researched \textit{citations needed}, though these approaches typically discuss the process of fusing images which have been pre-aligned. Pre-computed transforms used to align the frames of two cameras are not robust to variations. Some approaches have made use of additional hardware sensors in order to correct against these variations \cite{chappell_exploiting_2006}. The approach presented in this thesis seeks to perform this correction completely in hardware using feature detection on a FPGA.
 
 The design choice to use a FPGA rather than a GPU or some other software based approach was made due to the advantages gained from operating with embedded hardware, namely higher portability and lower overall power consumption.
 
@@ -135,7 +136,7 @@ The Laplacian pyramid is one which can be used for reconstruction of the origina
 
 The property of the Laplacian that makes it ideal for fusion is its ability to capture the high frequency components in an image through the use of very simple kernel operators that are easily implemented in hardware. The difference between a blurred image and the original will have higher magnitude in the areas where the image was sharpest.
 
-The fusion of two images can be thought of as a function of the two images $X$ and $Y$ of dimension $M \times N$ where $Z = f(X, Y)$ is a single image of dimension $M \times N$. A naive approach to fusion would be to compute the Laplacians and use their magnitudes to select a pixel from either $X$ or $Y$ as shown in Equation \ref{eq_naive_fusion}.
+The fusion of two images can be thought of as a function of the two images $X$ and $Y$ of dimension $M \times N$ where $Z = f(X, Y)$, a single image of dimension $M \times N$. A naive approach to fusion would be to compute the Laplacians and use their magnitudes to select a pixel from either $X$ or $Y$ as shown in Equation \ref{eq_naive_fusion}.
 
 \begin{equation}
 Z(i,j)=
@@ -181,7 +182,7 @@ This approach does not account for variations in colorspace between the two imag
 	\caption{Fusion of the images in Figure \ref{fig_peppers_lr} using a naive selection and weighted sum approach}
 \end{figure}
 
-A more correct approach would involve using the Laplacian as a weight in a weighted sum to combine the pixels of the images, rather than simply selecting them, as shown in Equation \ref{eq_weighted_fusion}.
+A more correct approach would involve using the Laplacian in a weighted sum to combine the pixels of the images, rather than simply selecting them, as shown in Equation \ref{eq_weighted_fusion}.
 
 \begin{equation}
 Z(i,j) = \frac{|L(X(i,j))|}{|L(X(i,j))| + |L(Y(i,j))|} \cdot X(i,j) + \frac{|L(Y(i,j))|}{|L(X(i,j))| + |L(Y(i,j))|} \cdot Y(i,j)
@@ -192,9 +193,71 @@ The result of this weighted sum approach can be seen in Figure \ref{fig_weighted
 
 \subsection{Speeded-up Robust Features (SURF)}
 
-The generation of features for use as marker points in alignment utilizes the SURF algorithm from Bay et al \cite{bay_surf:_2006}. SURF is composed of two parts: a discrete approximation for computing Hessian determinants, and the generation of rotation invariant feature descriptors for detected feature points.
+The generation of features for use as marker points in alignment utilizes the SURF algorithm from Bay et al \cite{bay_surf:_2006}. SURF is composed of two parts: a discrete approximation for computing Hessian determinants, and the generation of rotation invariant feature descriptors for detected feature points. 
+
+SURF is typically used for its applications in object recognition, where the feature descriptor is used to facilitate a match between what is observed and some known set of feature points and descriptors. The descriptor largely serves as a way of discriminating against false positives. In terms of using SURF for fusion, the detected feature points will be matched across two images with the assumption that the subject is the same and that the images do contain spatially coherent matches. Given this assumption, it can be concluded that the feature descriptor is not necessary for alignment, only the feature points computed using Hessian determinants.
 
 \subsubsection{Computation of Hessian Determinants}
+
+The Hessian determinant is the determinant of a Hessian matrix, which is a matrix composed of the spatial partial second derivatives of a function $f : \mathbb{R}^n \rightarrow \mathbb{R}$. It is of the general form shown in Equation \ref{eq_hessian_general}. In the image domain, $f : \mathbb{R}^2 \rightarrow \mathbb{R}$. The particular form of the Hessian matrix in $\mathbb{R}^2$ with dimensions $x_1$ and $x_2$ is shown in Equation \ref{eq_hessian_r2}.
+
+\begin{equation}
+H = \begin{bmatrix}
+\frac{\partial^2 f}{\partial x_1^2} & \frac{\partial^2 f}{\partial x_1 x_2} & \cdots & \frac{\partial^2 f}{\partial x_1 \partial x_n} \\
+\frac{\partial^2 f}{\partial x_2 \partial x_1} & \frac{\partial^2 f}{\partial x_2^2} & \cdots & \frac{\partial^2 f}{\partial x_2 \partial x_2} \\
+\vdots & \vdots & \ddots & \vdots \\
+\frac{\partial^2 f}{\partial x_n \partial x_1} & \frac{\partial^2 f}{\partial x_n \partial x_2} & \cdots & \frac{\partial^2 f}{\partial x_n^2}
+\end{bmatrix}
+\label{eq_hessian_general}
+\end{equation}
+
+\begin{equation}
+H = \begin{bmatrix}
+\frac{\partial^2 f}{\partial x_1^2} & \frac{\partial^2 f}{\partial x_1 x_2} \\
+\frac{\partial^2 f}{\partial x_2 x_1} & \frac{\partial^2 f}{\partial x_2^2}
+\end{bmatrix}
+\label{eq_hessian_r2}
+\end{equation}
+
+The second order derivative used can be computed via convolution of the Gaussian second order derivative at any point, $x$, in the image. The formulas for the Gaussian second order derivative for each partial with respect to $x_1^2$, $x_1 x_2$ and $x_2^2$ can be seen in Equations \ref{eq_partial_x1}, \ref{eq_partial_x1x2}, and \ref{eq_partial_x2} respectively.
+
+\begin{equation}
+\frac{\partial^2 G(x_1,x_2,\sigma)}{\partial^2 x_1} = (-1 + \frac{x_1^2}{\sigma^2})\frac{e^{-\frac{x_1^2+x_2^2}{2\sigma^2}}}{2\pi \sigma^4}
+\label{eq_partial_x1}
+\end{equation}
+
+\begin{equation}
+\frac{\partial^2 G(x_1,x_2,\sigma)}{\partial x_1 x_2} = \frac{x_1 x_2}{2 \pi \sigma^6}e^{-\frac{x_1^2 + x_2^2}{2 \sigma^2}}
+\label{eq_partial_x1x2}
+\end{equation}
+
+\begin{equation}
+\frac{\partial^2 G(x_1,x_2,\sigma)}{\partial^2 x_2} = (-1 + \frac{x_2^2}{\sigma^2})\frac{e^{-\frac{x_1^2+x_2^2}{2\sigma^2}}}{2\pi \sigma^4}
+\label{eq_partial_x2}
+\end{equation}
+
+3D surface plots of these equations where $\sigma=1$ can be seen in Figure \ref{fig_gaussian_surface_plots}. In order to compute these functions quickly, SURF approximates them with cropped, discrete, kernels. 
+
+\begin{figure}[h]
+	\centering
+	\begin{subfigure}[b]{0.45\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_xx}
+		\caption{$\frac{\partial^2 G(x_1, x_2)}{\partial^2 x_1}$}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.45\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_xy}
+		\caption{$\frac{\partial^2 G(x_1, x_2)}{\partial x_1 x_2}$}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.45\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_yy}
+		\caption{$\frac{\partial^2 G(x_1, x_2)}{\partial^2 x_2}$}
+	\end{subfigure}
+	\caption{3D surface plots of the Gaussian second order derivative functions where $\sigma=1$}
+	\label{fig_gaussian_surface_plots}
+\end{figure}
 
 \subsubsection{SURF Implementations for FPGA Devices}
 
