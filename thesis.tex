@@ -110,7 +110,7 @@
 
 \subsection{Introduction}
 
-The fusion of data from two or more sensors has been well-researched \textit{citations needed}, though these approaches typically discuss the process of fusing images which have been pre-aligned. Pre-computed transforms used to align the frames of two cameras are not robust to variations. Some approaches have made use of additional hardware sensors in order to correct against these variations \cite{chappell_exploiting_2006}. The approach presented in this thesis seeks to perform this correction completely in hardware using feature detection on a FPGA.
+The fusion of data from two or more sensors has been well-researched \cite{wang_multi-focus_2011} \cite{li_multi-sensor_1994}, though these approaches typically discuss the process of fusing images which have been pre-aligned. Pre-computed transforms used to align the frames of two cameras are not robust to variations. Some approaches have made use of additional hardware sensors in order to correct against these variations \cite{chappell_exploiting_2006}. The approach presented in this thesis seeks to perform this correction completely in hardware using feature detection on a FPGA.
 
 The design choice to use a FPGA rather than a GPU or some other software based approach was made due to the advantages gained from operating with embedded hardware, namely higher portability and lower overall power consumption.
 
@@ -259,7 +259,55 @@ The second order derivative used can be computed via convolution of the Gaussian
 	\label{fig_gaussian_surface_plots}
 \end{figure}
 
+The Gaussian second order derivatives can be approximated as $9 \times 9$ kernels with $\sigma=1.2$. These kernels can be seen in Figure \ref{fig_gaussian_kernels}. By adjusting $\sigma$, Hessian determinants can be computed in different scale spaces. This is a concept that SURF draws from the Scale-Invariant Feature Transform (SIFT) from Lowe et al \cite{lowe_distinctive_2004}.
+
+ By detecting features in different scale spaces, SIFT and by proxy, SURF are robust to changes in scale. SIFT accomplished this by downsampling the image to detect at lower order scale spaces. SURF improved on this approach for speed by instead scaling the kernel.
+
+\begin{figure}[h]
+	\centering
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_second_order_kernel_xx}
+		\caption{$\frac{\partial^2 G}{\partial^2 x_1}$}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_second_order_kernel_xy}
+		\caption{$\frac{\partial^2 G}{\partial x_1 x_2}$}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_second_order_kernel_yy}
+		\caption{$\frac{\partial^2 G}{\partial^2 x_2}$}
+	\end{subfigure}
+	\caption{$9 \times 9$ discrete approximations of the Gaussian second order derivative with $\sigma=1.2$}
+	\label{fig_gaussian_kernels}
+\end{figure}
+
+Another speed optimization presented in SURF takes advantage of the form of the discrete kernels. Since the approximated kernels are composed of rectangles of constant value, they can be decomposed into a set of box filters. Box filters can be computed quickly with the use of integral images. The general form of the integral image of an $M \times N$ image $I$ is shown in Equation \ref{eq_integral_image}.
+
+\begin{equation}
+\int I = \begin{bmatrix}
+I(0,0) & \sum\limits_{m=0}^1 I(0,m) & \cdots & \sum\limits_{m=0}^M I(0,m) \\
+\sum\limits_{n=0}^1 I(n,0) & \sum\limits_{n=0}^1 \sum\limits_{m=0}^1 I(n,m) & & \vdots \\
+\vdots & & \ddots & \vdots \\
+\sum\limits_{n=0}^N I(n,0) & \cdots & \cdots & \sum\limits_{n=0}^N \sum\limits_{m=0}^M I(n,m)
+\end{bmatrix}
+\label{eq_integral_image}
+\end{equation}
+
+Integral images decrease the computational complexity of finding the sum of an area in the input image. The computational complexity of strict kernel convolution at each point scales with the size of the kernel and is of the order $O(N^2)$ where the kernel is $N \times N$. A box filter can be decomposed into finding the sum of an area in the image and scaling it. Finding the sum from the integral image can be performed in $O(1)$ as shown in Equation \ref{eq_integral_image_box}. 
+
+\begin{equation}
+\sum\limits_{n=w}^y \sum\limits_{m=x}^z = \int I(y,z) - \int I(w-1,z) - \int I(y,x-1) + \int I(w-1, x-1)
+\label{eq_integral_image_box}
+\end{equation}
+
+This makes the computation of the Hessian matrix scale only in terms of the image size, yielding no additional penalty for operating on different scale spaces.
+
 \subsubsection{SURF Implementations for FPGA Devices}
+
+The relatively low computational complexity makes SURF a popular choice for FPGA applications. Battezzati et al. present an architecture using accumulators for computing the integral image pipelined through the Hessian computation and storing detected feature points in a FIFO cache \cite{battezzati_surf_2012}. These are matched against a stored set of feature points. Chen et al. present improvements on this approach by parallelizing the computation of different scale spaces \cite{chen_fpga-based_2016}. The implementation in this thesis follows these approaches with some additional improvements for speed based on the use case of matching against another image rather than a stored set of features.
 
 \subsection{Iterative Closest Point Algorithm}
 
