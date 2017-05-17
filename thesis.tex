@@ -115,7 +115,23 @@ The design choice to use a FPGA rather than a GPU or some other software based a
 
 \subsection{Laplacian Fusion}
 
-Laplacian pyramids of images have their origin as a strategy for image encoding \cite{burt_laplacian_1983}. A gaussian blur is applied to the image, and the image is downsampled to half of its original size. This process can be repeated on the resulting image to create a sequence of images representing the original in different scale spaces. This sequence of blurred and downsampled images is known as a Gaussian pyramid. The Laplacian pyramid is one which can be used for reconstruction of the original image. At each level above the lowest level of the Gaussian pyramid, the level below is upsampled to match the scale of the current level. The difference between the upsampled image and the current scale level image is known as the Laplacian of the image. The sum of the upsampled lower level and the Laplacian is the original image. At a single level, the Laplacian can be thought of as the error introduced by applying a Gaussian and Box filter.
+Laplacian pyramids of images have their origin as a strategy for image encoding \cite{burt_laplacian_1983}. A gaussian blur is applied to the image, and the image is downsampled to half of its original size. This process can be repeated on the resulting image to create a sequence of images representing the original in different scale spaces. This sequence of blurred and downsampled images is known as a Gaussian pyramid. An illustration of a Guassian pyramid for an example image can be seen in Figure \ref{fig_pepper_gaussian_pyramid}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.6\textwidth]{figures/peppers/gaussian_pyramid}
+	\caption{Gaussian pyramid of an example image}
+	\label{fig_pepper_gaussian_pyramid}
+\end{figure}
+
+The Laplacian pyramid is one which can be used for reconstruction of the original image. At each level above the lowest level of the Gaussian pyramid, the level below is upsampled to match the scale of the current level. The difference between the upsampled image and the current scale level image is known as the Laplacian of the image. The sum of the upsampled lower level and the Laplacian is the original image. At a single level, the Laplacian can be thought of as the error introduced by applying a Gaussian and Box filter. A diagram illustrating a Laplacian pyramid can be seen in Figure \ref{fig_pepper_laplacian_pyramid}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=\textwidth]{figures/peppers/laplacian_pyramid}
+	\caption{Laplacian pyramid of an example image}
+	\label{fig_pepper_laplacian_pyramid}
+\end{figure}
 
 The property of the Laplacian that makes it ideal for fusion is its ability to capture the high frequency components in an image through the use of very simple kernel operators that are easily implemented in hardware. The difference between a blurred image and the original will have higher magnitude in the areas where the image was sharpest.
 
@@ -132,7 +148,7 @@ Y(i,j) & otherwise
 
 This approach does not account for variations in colorspace between the two images. Consider the images in Figure \ref{fig_peppers_lr}. The more saturated image will likely have a higher valued Laplacian in some parts simply because it is brighter, therefore having higher magnitudes at individual pixels. This approach also will not facilitate smooth stitching of the images. Contiguous regions of selection from one image will be adjacent to regions from the other with no transition, producing a grainy effect at areas of high frequency. The result of this naive fusion can be seen in Figure \ref{fig_naive_fusion} which exhibits the flaws of this approach.
 
-\begin{figure}
+\begin{figure}[h]
 	\centering
 	\begin{subfigure}[b]{0.45\textwidth}
 		\centering
@@ -148,7 +164,7 @@ This approach does not account for variations in colorspace between the two imag
 	\label{fig_peppers_lr}
 \end{figure}
 
-\begin{figure}
+\begin{figure}[h]
 	\centering
 	\begin{subfigure}[b]{0.45\textwidth}
 		\centering
