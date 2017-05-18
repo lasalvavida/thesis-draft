@@ -311,9 +311,127 @@ The relatively low computational complexity makes SURF a popular choice for FPGA
 
 \subsection{Iterative Closest Point Algorithm}
 
+The crucial step in aligning the two images is the computation of an affine transform mapping one image into the space of the other. Once the images are aligned, they can be fused. A combination of SURF and the iterative closest point algorithm are used to compute this transform. Iterative closest point was first proposed by Chen and Medioni as a method for aligning 3-D point cloud data \cite{chen_object_1992}. In its simplest form, the algorithm follows the following steps:
+
+\begin{enumerate}
+	\item Each point in the set of points to be transformed is matched against the closest (usually Euclidean distance) point in the reference set of points.
+	\item A transformation is estimated to minimize the distance between the transform set and their matches in the reference set of points.
+	\item The transform is applied to the points.
+\end{enumerate}
+
+This process is repeated, converging to the local minimum that is the match between the two point sets.
+
+Let $X_p(i)$ be be the $i^{th}$ point in the set of reference points onto which the transform points, $X(j)$, where $j$ is the index of the closest point to $X_p(i)$ in $X$, will be projected. The general form for this transformation $M$ is shown in Equation \ref{eq_general_icp_mapping}, and the expanded matrix form can be seen in Equation \ref{eq_expanded_icp_mapping}. In the expanded matrix form $M$ is decomposed into $R$, a $2 \times 2$ rotation matrix, and $T$, a translation offset.
+
+\begin{equation}
+X_p(i) = X(j) \cdot M
+\label{eq_general_icp_mapping}
+\end{equation}
+
+\begin{equation}
+\begin{bmatrix}
+X_p(i)_1 \\
+X_p(i)_2 \\
+1 
+\end{bmatrix}
+=
+\begin{bmatrix}
+X(j)_1 & X(j)_2 & 1
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+R_{11} & R_{12} & T_1 \\
+R_{21} & R_{22} & T_2 \\
+0 & 0 & 1
+\end{bmatrix}
+\label{eq_expanded_icp_mapping}
+\end{equation}
+
+This equation only solves for $M$ for a single point relation, but can be restructured to contain
+the whole set of $N$ points as shown in Equation \ref{eq_full_icp_matrix}. In this equation $P$ is a function $P: i \rightarrow j$ mapping the closest points in each set.
+
+\begin{equation}
+\begin{bmatrix}
+X_p(0)_1 \\
+X_p(0)_2 \\
+X_p(1)_1 \\
+X_p(1)_2 \\
+\vdots \\
+X_p(N)_1 \\
+X_p(N)_2
+\end{bmatrix}
+=
+\begin{bmatrix}
+X(P(0))_1 & X(P(0))_2 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & X(P(0))_1 & X(P(0))_2 & 1 \\
+X(P(1))_1 & X(P(1))_2 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & X(P(1))_1 & X(P(1))_2 & 1 \\
+\vdots & & & & & \vdots \\
+X(P(N))_1 & X(P(N))_2 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & X(P(N))_1 & X(P(N))_2 & 1 
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+R_{11} \\
+R_{12} \\
+T_1 \\
+R_{21} \\
+R_{22} \\
+T_2
+\end{bmatrix}
+\label{eq_full_icp_matrix}
+\end{equation}
+
+Solving for $M$ in this way maps all points in $X$ to their closest points in $X_p$ with the error minimized in a least-squares sense. 
+
+In this form, the transform $M$ will include shear transformations and non-uniform scaling. The computation can be simplified by forcing the second basis vector in $R$ to be orthogonal to the first. The two cameras are expected to be be physically in the same plane, and as such, non-uniform scaling and shear transformations are not expected for alignment. By setting $R_{21} = -R_{12}$ and $R_{22} = R{11}$, the computation of $M$ can be reduced as shown in Equation \ref{eq_reduced_icp_matrix}.
+
+\begin{equation}
+\begin{bmatrix}
+X_p(0)_1 \\
+X_p(0)_2 \\
+X_p(1)_1 \\
+X_p(1)_2 \\
+\vdots \\
+X_p(N)_1 \\
+X_p(N)_2
+\end{bmatrix}
+=
+\begin{bmatrix}
+X(P(0))_1 & X(P(0))_2 & 1 & 0 \\
+X(P(0))_2 & -X(P(0))_1 & 0 & 1 \\
+X(P(1))_1 & X(P(1))_2 & 1 & 0 \\
+X(P(1))_2 & -X(P(1))_1 & 0 & 1 \\
+\vdots & & & \vdots \\
+X(P(N))_1 & X(P(N))_2 & 1 & 0 \\
+X(P(N))_2 & -X(P(N))_1 & 0 & 1 \\
+\end{bmatrix}
+\cdot
+\begin{bmatrix}
+R_{11} \\
+R_{12} \\
+T_1 \\
+T_2
+\end{bmatrix}
+\label{eq_reduced_icp_matrix}
+\end{equation}
+
+The performance of iterative closest point can be further improved by making it more sensitive to errors. Chetverikov introduces a variant of iterative closest point referred to as trimmed iterative closest point (TrICP) \cite{chetverikov_trimmed_2002}. TrICP is more robust to errors by eliminating points that introduce error into the matching. Some detected features points will not have correspondences between images. By eliminating these points, the overall error can be reduced to compute a more accurate transform.
+
 \subsection{Singular Value Decomposition (SVD)}
 
+Let Equation \ref{eq_reduced_icp_matrix} be of the form $X=Q \cdot M$. In order to compute compute the transform $M$, the equation must be restructured as in Equation \ref{eq_svd_inverse}.
+
+\begin{equation}
+Q^{-1} X = M
+\label{eq_svd_inverse}
+\end{equation}
+
+$Q$ is not a square matrix, and as such is not invertible, but its pseudoinverse can be used in this instance. The pseudoinverse is computed through the use of singular value decomposition. The use of singular value decomposition to compute the transform is the source of the least squares fitting achieved by iterative closest point.
+
 \subsubsection{SVD Implementations for FPGA Devices}
+
+Ledesma-Carillo et al. present a hardware efficient algorithm for computing singular value decompositions on large matrices uisng one-sided Jacobi rotations \cite{ledesma-carrillo_reconfigurable_2011}.
 
 \section{Implementation}
 

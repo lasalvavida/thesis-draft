@@ -5,12 +5,7 @@ left = im2double(rgb2gray(original_left));
 right = im2double(rgb2gray(original_right));
 
 m = 5;
-s = 1.0;
-
-left = medfilt2(left, [m m]);
-left = imgaussfilt(left, s);
-right = medfilt2(right, [m m]);
-right = imgaussfilt(right, s);
+s = 0.5;
 
 xx_9 = [
     0 0 0  0  0  0 0 0 0;
@@ -45,6 +40,7 @@ yy_left = conv2(left, yy_9, 'same');
 N = 9;
 
 MAX_FEATURES = 1000;
+ITERATIONS = 20;
 
 h_left = zeros(size(left));
 
@@ -112,59 +108,86 @@ end
 [sort_left, sort_left_i] = sort(h_left_s(:), 'descend');
 [sort_right, sort_right_i] = sort(h_right_s(:), 'descend');
 
-figure();
-imshow([h_left h_right]);
-hold on;
-
-proj = zeros(2 * MAX_FEATURES, 1);
-M = zeros(2 * MAX_FEATURES, 6);
+pts_left = zeros(MAX_FEATURES, 2);
+pts_right = zeros(MAX_FEATURES, 2);
 for i = 1:MAX_FEATURES
     left_index = sort_left_i(i);
+    right_index = sort_right_i(i);
     x_left = floor(left_index / size(left, 1));
     y_left = mod(left_index, size(left, 1));
-    x_closest = 0;
-    y_closest = 0;
-    distance = inf;
+    x_right = floor(right_index / size(right, 1));
+    y_right = mod(right_index, size(right, 1));
+    pts_left(i,:) = [x_left y_left];
+    pts_right(i,:) = [x_right y_right];
+end
+
+transform = eye(3);
+num_features = MAX_FEATURES;
+valid = ones(MAX_FEATURES,1);
+distances = zeros(MAX_FEATURES,1);
+mappings = zeros(MAX_FEATURES,1);
+for i = 1:ITERATIONS
+    proj = zeros(2 * num_features, 1);
+    M = zeros(2 * num_features, 6);
+    errors = zeros(MAX_FEATURES,1);
+    p = 1;
     for j = 1:MAX_FEATURES
-        right_index = sort_right_i(j);
-        x_right = floor(right_index / size(right, 1));
-        y_right = mod(right_index, size(right, 1));
-        temp_distance = sqrt((x_left - x_right)^2 + (y_left - y_right)^2);
-        if temp_distance < distance
-            x_closest = x_right;
-            y_closest = y_right;
-            distance = temp_distance;
+        if valid(j) == 1
+            x_left = pts_left(j,1);
+            y_left = pts_left(j,2);
+            distance = inf;
+            for k = 1:MAX_FEATURES
+                x_right = pts_right(k,1);
+                y_right = pts_right(k,2);
+                temp_distance = sqrt((x_left - x_right)^2 + (y_left - y_right)^2);
+                if temp_distance < distance
+                    x_closest = x_right;
+                    y_closest = y_right;
+                    mappings(j) = k;
+                    distance = temp_distance;
+                end
+            end
+            distances(j) = distance;
+            proj((p-1)*2+1) = x_closest;
+            proj((p-1)*2+2) = y_closest;
+            M((p-1)*2+1,:) = [x_left y_left 1 0 0 0];
+            M((p-1)*2+2,:) = [0 0 0 x_left y_left 1];
+            p = p + 1;
         end
     end
-    plot(x_left, y_left, 'r.');
-    plot(x_closest + size(right, 2), y_closest, 'r.');
-    line([x_left x_closest + size(right, 2)], [y_left y_closest]);
-    
-    proj((i-1)*2+1) = x_closest;
-    proj((i-1)*2+2) = y_closest;
-    M((i-1)*2+1,:) = [x_left y_left 1 0 0 0];
-    M((i-1)*2+2,:) = [0 0 0 x_left y_left 1];
-end
-
-hold off;
-
-transform = [reshape(pinv(M) * proj, 3, 2)'; 0 0 1];
-t_left = imwarp(left, affine2d(transform'));
-l_t_left = t_left - imfilter(imgaussfilt(t_left, s), ones(5,5)/25);
-l_right = right - imfilter(imgaussfilt(right, s), ones(5,5)/25);
-
-fused = zeros(size(right));
-
-for i = 1:min(size(t_left,1),size(right,1))
-    for j = 1:min(size(t_left,2),size(right,2))
-        %fused(i,j) = l_t_left(i,j)/(l_t_left(i,j) + l_right(i,j)) * t_left(i,j) + ...
-        %    l_right(i,j)/(l_t_left(i,j) + l_right(i,j)) * original_right(i,j);
-        fused(i,j) = 0.5 * t_left(i,j) + 0.5 * right(i,j);
+    compute = [reshape(pinv(M) * proj, 3, 2)'; 0 0 1];
+    for j = 1:MAX_FEATURES
+        if valid(j) == 1
+            pt_left = [pts_left(j,:) 1];
+            pt_left = compute * pt_left';
+            x_closest = pts_right(mappings(j),1);
+            y_closest = pts_right(mappings(j),2);
+            temp_distance = sqrt((pt_left(1) - x_closest)^2 + (pt_left(2) - y_closest)^2);
+            errors(j) = abs(abs(distances(j)) - abs(temp_distance));
+            pts_left(j,:) = pt_left(1:2);
+        end
     end
+    [sort_error, sort_error_i] = sort(errors, 'descend');
+    for j = 1:min(length(errors),num_features*0.05)
+        valid(sort_error_i(j)) = 0;
+    end
+    transform = compute * transform;
 end
+
+t_left = imwarp(original_left, affine2d(transform'), 'OutputView', imref2d(size(original_left)));
+
+fused = imfuse(t_left, original_right);
 
 figure();
-imshow(fused); 
+imshow(fused);
+hold on;
+for i = 1:MAX_FEATURES
+    if valid(i) == 1
+        plot(pts_left(i,1), pts_left(i,2), 'r.');
+    end
+    plot(pts_right(i,1), pts_right(i,2), 'b.');
+end
+hold off;
 
 %figure();
 %h = surf(1:size(h_left, 2), 1:size(h_left, 1), h_left, original_left);
