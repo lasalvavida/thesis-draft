@@ -44,7 +44,7 @@ yy_left = conv2(left, yy_9, 'same');
 
 N = 9;
 
-MAX_FEATURES = 200;
+MAX_FEATURES = 1000;
 
 h_left = zeros(size(left));
 
@@ -149,9 +149,22 @@ end
 hold off;
 
 transform = [reshape(pinv(M) * proj, 3, 2)'; 0 0 1];
-t_right = imwarp(original_right, affine2d(transform'));
+t_left = imwarp(left, affine2d(transform'));
+l_t_left = t_left - imfilter(imgaussfilt(t_left, s), ones(5,5)/25);
+l_right = right - imfilter(imgaussfilt(right, s), ones(5,5)/25);
+
+fused = zeros(size(right));
+
+for i = 1:min(size(t_left,1),size(right,1))
+    for j = 1:min(size(t_left,2),size(right,2))
+        %fused(i,j) = l_t_left(i,j)/(l_t_left(i,j) + l_right(i,j)) * t_left(i,j) + ...
+        %    l_right(i,j)/(l_t_left(i,j) + l_right(i,j)) * original_right(i,j);
+        fused(i,j) = 0.5 * t_left(i,j) + 0.5 * right(i,j);
+    end
+end
+
 figure();
-imshow(t_right); 
+imshow(fused); 
 
 %figure();
 %h = surf(1:size(h_left, 2), 1:size(h_left, 1), h_left, original_left);
