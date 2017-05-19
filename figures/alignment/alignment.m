@@ -39,8 +39,8 @@ yy_left = conv2(left, yy_9, 'same');
 
 N = 9;
 
-MAX_FEATURES = 1000;
-ITERATIONS = 20;
+MAX_FEATURES = 640;
+ITERATIONS = 16;
 
 h_left = zeros(size(left));
 
@@ -110,6 +110,8 @@ end
 
 pts_left = zeros(MAX_FEATURES, 2);
 pts_right = zeros(MAX_FEATURES, 2);
+h_mags_left = zeros(MAX_FEATURES, 1);
+h_mags_right = zeros(MAX_FEATURES, 1);
 for i = 1:MAX_FEATURES
     left_index = sort_left_i(i);
     right_index = sort_right_i(i);
@@ -119,9 +121,24 @@ for i = 1:MAX_FEATURES
     y_right = mod(right_index, size(right, 1));
     pts_left(i,:) = [x_left y_left];
     pts_right(i,:) = [x_right y_right];
+    h_mags_left(i) = h_left(left_index);
+    h_mags_right(i) = h_right(right_index);
 end
 
+center_left = mean(pts_left);
+center_right = mean(pts_right);
+translation = center_right - center_left;
+
 transform = eye(3);
+transform(1,3) = translation(1);
+transform(2,3) = translation(2);
+
+for i = 1:MAX_FEATURES
+    pt_left = [pts_left(i, :) 1];
+    pt_left = transform * pt_left';
+    pts_left(i,:) = pt_left(1:2);
+end
+
 num_features = MAX_FEATURES;
 valid = ones(MAX_FEATURES,1);
 distances = zeros(MAX_FEATURES,1);
@@ -135,11 +152,13 @@ for i = 1:ITERATIONS
         if valid(j) == 1
             x_left = pts_left(j,1);
             y_left = pts_left(j,2);
+            h_mag_left = h_mags_left(j);
             distance = inf;
             for k = 1:MAX_FEATURES
                 x_right = pts_right(k,1);
                 y_right = pts_right(k,2);
-                temp_distance = sqrt((x_left - x_right)^2 + (y_left - y_right)^2);
+                h_mag_right = h_mags_right(k);
+                temp_distance = sqrt((x_left - x_right)^2 + (y_left - y_right)^2 + (h_mag_left - h_mag_right)^2);
                 if temp_distance < distance
                     x_closest = x_right;
                     y_closest = y_right;
@@ -168,9 +187,10 @@ for i = 1:ITERATIONS
         end
     end
     [sort_error, sort_error_i] = sort(errors, 'descend');
-    for j = 1:min(length(errors),num_features*0.05)
-        valid(sort_error_i(j)) = 0;
-    end
+    %for j = 1:num_features*0.1
+    %    valid(sort_error_i(j)) = 0;
+    %    num_features = num_features - 1;
+    %end
     transform = compute * transform;
 end
 
@@ -182,9 +202,7 @@ figure();
 imshow(fused);
 hold on;
 for i = 1:MAX_FEATURES
-    if valid(i) == 1
-        plot(pts_left(i,1), pts_left(i,2), 'r.');
-    end
+    plot(pts_left(i,1), pts_left(i,2), 'r.');
     plot(pts_right(i,1), pts_right(i,2), 'b.');
 end
 hold off;
