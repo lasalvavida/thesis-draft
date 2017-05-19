@@ -6,3 +6,5 @@
 *.gz
 *.bbl
 *.blg
+*.pdf
+!Thesis_Manual_2016-17.pdf

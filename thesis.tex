@@ -447,6 +447,57 @@ Ledesma-Carillo et al. present a hardware efficient algorithm for computing sing
 
 \section{Results}
 
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=\textwidth]{figures/alignment/error_for_iterations}
+	\caption{The error in pixels per feature for performing $n$ iterations of the iterative closest point algorithm on differently sized sets of the strongest feature points}
+	\label{fig_results_error_plot}
+\end{figure}
+
+\begin{figure}[h]
+	\centering
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/alignment/fused_20_features_16_iterations}
+		\caption{20 features}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/alignment/fused_40_features_16_iterations}
+		\caption{40 features}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/alignment/fused_80_features_16_iterations}
+		\caption{80 features}
+	\end{subfigure}
+
+   	\begin{subfigure}[b]{0.3\textwidth}
+    	\centering
+    	\includegraphics[width=\textwidth]{figures/alignment/fused_160_features_16_iterations}
+    	\caption{160 features}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.3\textwidth}
+    	\centering
+    	\includegraphics[width=\textwidth]{figures/alignment/fused_320_features_16_iterations}
+    	\caption{320 features}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.3\textwidth}
+    	\centering
+    	\includegraphics[width=\textwidth]{figures/alignment/fused_640_features_16_iterations}
+    	\caption{640 features}
+    \end{subfigure}
+	\caption{Alignment results after running iterative closest point for 16 iterations on varying numbers of features with reference features marked in red and transformed features in blue}
+	\label{fig_alignment_results}
+\end{figure}
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=\textwidth]{figures/alignment/error_for_alignment}
+	\caption{The error in intensity based on the alignment from performing $n$ iterations of the iterative closest point algorithm on differently sized sets of the strongest feature points}
+	\label{fig_results_alignment_error_plot}
+\end{figure}
+
 \pagebreak
 
 \bibliographystyle{plain}
