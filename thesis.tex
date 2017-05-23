@@ -10,6 +10,7 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{subcaption}
+\usepackage{fontspec}
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 
 \usepackage[margin=1.5in]{geometry}
@@ -112,11 +113,28 @@
 
 The fusion of data from two or more sensors has been well-researched \cite{wang_multi-focus_2011} \cite{li_multi-sensor_1994}, though these approaches typically discuss the process of fusing images which have been pre-aligned. Pre-computed transforms used to align the frames of two cameras are not robust to variations. Some approaches have made use of additional hardware sensors in order to correct against these variations \cite{chappell_exploiting_2006}. The approach presented in this thesis seeks to perform this correction completely in hardware using feature detection on a FPGA.
 
-The design choice to use a FPGA rather than a GPU or some other software based approach was made due to the advantages gained from operating with embedded hardware, namely higher portability and lower overall power consumption.
+In order to align two images, one is treated as the reference image, and the other is the transform image which needs to be transformed to be aligned with the reference image. As such the problem can be broken into four major components. 
+
+\begin{enumerate}
+	\item Detecting feature points in the two images
+	\item Computing the transform which maps the transform image into the space of the reference image
+	\item Applying the computed transform to the transform image
+	\item Fusion of the reference and transformed image
+\end{enumerate}
+
+Feature points are detected using some of the techniques from SURF which makes use of Hessian determinants to detect points of interest in multiple scale spaces. High magnitude features are stored in a buffer to be used for computing the transform.
+
+Once the feature points for the two images have been computed and stored in the buffer, the points from the transform image are mapped to their closest point in terms of euclidean distance from the reference set. An orthogonal projection from the transform points to the reference points is created with the transform as the unknown. Singular value decomposition is used to compute the pseudo-inverse of the matrix containing the reference points so it can be premultiplied by the matrix containing the transform points. The result of this product is the transform matrix which maps transform points to reference points with the error minimized in a least-squares sense. This process may need to be repeated multiple times to converge to a local error minimum, a process referred to as iterative closest point.
+
+As the image data streams into hardware, the data is buffered into memory. With the transform computed, the desired address for the output image is decomposed into $x$ and $y$ coordinates, which are transformed and then reformed back into an address which is used to select pixels from the data in memory. In this way, the transform is applied to align the transform image with the reference image.
+
+Finally, the technique of Laplacian fusion is used to combine the aligned images. It effectively selects the highest frequency components from the two images in order to create an output image where the sharpest, focused parts of the two images are combined into one image.
+
+This process is applied continuously in real time. As the data from the camera data streams in, it produces a single fused output image for display with minimal latency. The design choice to use a FPGA rather than a GPU or some other software based approach was made due to the advantages gained from operating with embedded hardware, namely higher portability and lower overall power consumption. 
 
 \subsection{Laplacian Fusion}
 
-Laplacian pyramids of images have their origin as a strategy for image encoding \cite{burt_laplacian_1983}. A gaussian blur is applied to the image, and the image is downsampled to half of its original size. This process can be repeated on the resulting image to create a sequence of images representing the original in different scale spaces. This sequence of blurred and downsampled images is known as a Gaussian pyramid. An illustration of a Guassian pyramid for an example image can be seen in Figure \ref{fig_pepper_gaussian_pyramid}.
+Laplacian pyramids of images have their origin as a strategy for image encoding \cite{burt_laplacian_1983}. A gaussian blur is applied to the image, and the image is downsampled to half of its original size. In this context, Gaussian blur refers to applying kernel convolution to this image with a Gaussian kernel. Likewise, a box blur is the application of a uniformly valued, normalized kernel through kernel convolution. Downsampling refers the process of halving the resolution of the image by combining adjacent pixels. Upsampling is the process of doubling the resolution of the image and interpolating the missing values in the new image. The process of blurring and downsampling can be repeated on the resulting image to create a sequence of images representing the original in different scale spaces. This sequence of blurred and downsampled images is known as a Gaussian pyramid. An illustration of a Guassian pyramid for an example image can be seen in Figure \ref{fig_pepper_gaussian_pyramid}.
 
 \begin{figure}[h]
 	\centering
@@ -125,8 +143,8 @@ Laplacian pyramids of images have their origin as a strategy for image encoding 
 	\label{fig_pepper_gaussian_pyramid}
 \end{figure}
 
-The Laplacian pyramid is one which can be used for reconstruction of the original image. At each level above the lowest level of the Gaussian pyramid, the level below is upsampled to match the scale of the current level. The difference between the upsampled image and the current scale level image is known as the Laplacian of the image. The sum of the upsampled lower level and the Laplacian is the original image. At a single level, the Laplacian can be thought of as the error introduced by applying a Gaussian and Box filter. A diagram illustrating a Laplacian pyramid can be seen in Figure \ref{fig_pepper_laplacian_pyramid}
-
+The Laplacian pyramid is one which can be used for reconstruction of the original image. At each level above the lowest level of the Gaussian pyramid, the level below is upsampled to match the scale of the current level. The difference between the upsampled image and the current scale level image is known as the Laplacian of the image. The sum of the upsampled lower level and the Laplacian is the original image. At a single level, the Laplacian can be thought of as the error introduced by applying a Gaussian and Box filter. A diagram illustrating a Laplacian pyramid can be seen in Figure \ref{fig_pepper_laplacian_pyramid}. In Figure \ref{fig_pepper_laplacian_pyramid}, the $G\downarrow$ operator refers to applying the Gaussian blur and downsampling, the $\uparrow$ operator refers to upsampling the input image, and the $-$ operator refers to computing the difference of the two input 
+images on each channel.
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=\textwidth]{figures/peppers/laplacian_pyramid}
@@ -136,7 +154,7 @@ The Laplacian pyramid is one which can be used for reconstruction of the origina
 
 The property of the Laplacian that makes it ideal for fusion is its ability to capture the high frequency components in an image through the use of very simple kernel operators that are easily implemented in hardware. The difference between a blurred image and the original will have higher magnitude in the areas where the image was sharpest.
 
-The fusion of two images can be thought of as a function of the two images $X$ and $Y$ of dimension $M \times N$ where $Z = f(X, Y)$, a single image of dimension $M \times N$. A naive approach to fusion would be to compute the Laplacians and use their magnitudes to select a pixel from either $X$ or $Y$ as shown in Equation \ref{eq_naive_fusion}.
+The fusion of two images can be thought of as a function of the two images $X$ and $Y$ of dimension $M \times N$ where $Z = f(X, Y)$, a single image of dimension $M \times N$. A naive approach to fusion would be to compute the Laplacians and use their magnitudes to select a pixel from either $X$ or $Y$ as shown in Equation \ref{eq_naive_fusion}. In this context, $|L(x)|$ represents the absolute value of the Laplacian of the input.
 
 \begin{equation}
 Z(i,j)=
@@ -195,7 +213,7 @@ The result of this weighted sum approach can be seen in Figure \ref{fig_weighted
 
 The generation of features for use as marker points in alignment utilizes the SURF algorithm from Bay et al \cite{bay_surf:_2006}. SURF is composed of two parts: a discrete approximation for computing Hessian determinants, and the generation of rotation invariant feature descriptors for detected feature points. 
 
-SURF is typically used for its applications in object recognition, where the feature descriptor is used to facilitate a match between what is observed and some known set of feature points and descriptors. The descriptor largely serves as a way of discriminating against false positives. In terms of using SURF for fusion, the detected feature points will be matched across two images with the assumption that the subject is the same and that the images do contain spatially coherent matches. Given this assumption, it can be concluded that the feature descriptor is not necessary for alignment, only the feature points computed using Hessian determinants.
+SURF is typically used for its applications in object recognition, where the feature descriptor is used to facilitate a match between what is observed and some known set of feature points and descriptors. The descriptor largely serves as a way of discriminating against false positives. In terms of using SURF for fusion, the detected feature points will be matched across two images with the assumption that the subject is the same and that the images do contain spatially coherent matches. Given this assumption, it can be concluded that the feature descriptor is not necessary for alignment. The feature points computed using Hessian determinants are sufficient.
 
 \subsubsection{Computation of Hessian Determinants}
 
@@ -222,7 +240,7 @@ H = \begin{bmatrix}
 The second order derivative used can be computed via convolution of the Gaussian second order derivative at any point, $x$, in the image. The formulas for the Gaussian second order derivative for each partial with respect to $x_1^2$, $x_1 x_2$ and $x_2^2$ can be seen in Equations \ref{eq_partial_x1}, \ref{eq_partial_x1x2}, and \ref{eq_partial_x2} respectively.
 
 \begin{equation}
-\frac{\partial^2 G(x_1,x_2,\sigma)}{\partial^2 x_1} = (-1 + \frac{x_1^2}{\sigma^2})\frac{e^{-\frac{x_1^2+x_2^2}{2\sigma^2}}}{2\pi \sigma^4}
+\frac{\partial^2 G(x_1,x_2,\sigma)}{\partial x_1^2} = (-1 + \frac{x_1^2}{\sigma^2})\frac{e^{-\frac{x_1^2+x_2^2}{2\sigma^2}}}{2\pi \sigma^4}
 \label{eq_partial_x1}
 \end{equation}
 
@@ -232,7 +250,7 @@ The second order derivative used can be computed via convolution of the Gaussian
 \end{equation}
 
 \begin{equation}
-\frac{\partial^2 G(x_1,x_2,\sigma)}{\partial^2 x_2} = (-1 + \frac{x_2^2}{\sigma^2})\frac{e^{-\frac{x_1^2+x_2^2}{2\sigma^2}}}{2\pi \sigma^4}
+\frac{\partial^2 G(x_1,x_2,\sigma)}{\partial x_2^2} = (-1 + \frac{x_2^2}{\sigma^2})\frac{e^{-\frac{x_1^2+x_2^2}{2\sigma^2}}}{2\pi \sigma^4}
 \label{eq_partial_x2}
 \end{equation}
 
@@ -243,7 +261,7 @@ The second order derivative used can be computed via convolution of the Gaussian
 	\begin{subfigure}[b]{0.45\textwidth}
 		\centering
 		\includegraphics[width=\textwidth]{figures/hessian/gaussian_xx}
-		\caption{$\frac{\partial^2 G(x_1, x_2)}{\partial^2 x_1}$}
+		\caption{$\frac{\partial^2 G(x_1, x_2)}{\partial x_1^2}$}
 	\end{subfigure}
 	\begin{subfigure}[b]{0.45\textwidth}
 		\centering
@@ -253,7 +271,7 @@ The second order derivative used can be computed via convolution of the Gaussian
 	\begin{subfigure}[b]{0.45\textwidth}
 		\centering
 		\includegraphics[width=\textwidth]{figures/hessian/gaussian_yy}
-		\caption{$\frac{\partial^2 G(x_1, x_2)}{\partial^2 x_2}$}
+		\caption{$\frac{\partial^2 G(x_1, x_2)}{\partial x_2^2}$}
 	\end{subfigure}
 	\caption{3D surface plots of the Gaussian second order derivative functions where $\sigma=1$}
 	\label{fig_gaussian_surface_plots}
@@ -268,7 +286,7 @@ The Gaussian second order derivatives can be approximated as $9 \times 9$ kernel
 	\begin{subfigure}[b]{0.3\textwidth}
 		\centering
 		\includegraphics[width=\textwidth]{figures/hessian/gaussian_second_order_kernel_xx}
-		\caption{$\frac{\partial^2 G}{\partial^2 x_1}$}
+		\caption{$\frac{\partial^2 G}{\partial x_1^2}$}
 	\end{subfigure}
 	\begin{subfigure}[b]{0.3\textwidth}
 		\centering
@@ -278,7 +296,7 @@ The Gaussian second order derivatives can be approximated as $9 \times 9$ kernel
 	\begin{subfigure}[b]{0.3\textwidth}
 		\centering
 		\includegraphics[width=\textwidth]{figures/hessian/gaussian_second_order_kernel_yy}
-		\caption{$\frac{\partial^2 G}{\partial^2 x_2}$}
+		\caption{$\frac{\partial^2 G}{\partial x_2^2}$}
 	\end{subfigure}
 	\caption{$9 \times 9$ discrete approximations of the Gaussian second order derivative with $\sigma=1.2$}
 	\label{fig_gaussian_kernels}
@@ -296,7 +314,7 @@ I(0,0) & \sum\limits_{m=0}^1 I(0,m) & \cdots & \sum\limits_{m=0}^M I(0,m) \\
 \label{eq_integral_image}
 \end{equation}
 
-Integral images decrease the computational complexity of finding the sum of an area in the input image. The computational complexity of strict kernel convolution at each point scales with the size of the kernel and is of the order $O(N^2)$ where the kernel is $N \times N$. A box filter can be decomposed into finding the sum of an area in the image and scaling it. Finding the sum from the integral image can be performed in $O(1)$ as shown in Equation \ref{eq_integral_image_box}. 
+Integral images decrease the computational complexity of finding the sum of an area in the input image. The computational complexity of strict kernel convolution at a point scales with the size of the kernel and is of the order $O(N^2)$ where the kernel is $N \times N$. A box filter can be decomposed into finding the sum of an area in the image and scaling it. Finding the sum from the integral image can be performed in $O(1)$ as shown in Equation \ref{eq_integral_image_box}. 
 
 \begin{equation}
 \sum\limits_{n=w}^y \sum\limits_{m=x}^z = \int I(y,z) - \int I(w-1,z) - \int I(y,x-1) + \int I(w-1, x-1)
@@ -382,7 +400,7 @@ T_2
 \label{eq_full_icp_matrix}
 \end{equation}
 
-Solving for $M$ in this way maps all points in $X$ to their closest points in $X_p$ with the error minimized in a least-squares sense. 
+Solving for $M$ in this way maps all points in $X$ to their closest points in $X_p$ based on an orthogonal projection with the error minimized in a least-squares sense. 
 
 In this form, the transform $M$ will include shear transformations and non-uniform scaling. The computation can be simplified by forcing the second basis vector in $R$ to be orthogonal to the first. The two cameras are expected to be be physically in the same plane, and as such, non-uniform scaling and shear transformations are not expected for alignment. By setting $R_{21} = -R_{12}$ and $R_{22} = R{11}$, the computation of $M$ can be reduced as shown in Equation \ref{eq_reduced_icp_matrix}.
 
@@ -420,7 +438,7 @@ The performance of iterative closest point can be further improved by making it 
 
 \subsection{Singular Value Decomposition (SVD)}
 
-Let Equation \ref{eq_reduced_icp_matrix} be of the form $X=Q \cdot M$. In order to compute compute the transform $M$, the equation must be restructured as in Equation \ref{eq_svd_inverse}.
+Let Equation \ref{eq_reduced_icp_matrix} be of the form $X=Q \cdot M$. In order to compute the transform $M$, the equation must be restructured as in Equation \ref{eq_svd_inverse}.
 
 \begin{equation}
 Q^{-1} X = M
@@ -447,12 +465,38 @@ Ledesma-Carillo et al. present a hardware efficient algorithm for computing sing
 
 \section{Results}
 
+\subsection{Selecting an optimal number of feature points}
+
+A set of experiments to align the images shown in Figure \ref{fig_waterboy_left_right} were performed using different numbers of feature points for a variable number of iterations of the iterative closest point algorithm.
+
+The iterative closest point algorithm always converges to a solution which minimizes the overall distance between the transform and reference set of points. This can be observed in Figure \ref{fig_results_error_plot} which shows the average distance from each point in the transform set of points to its closest neighbor in the reference set of points. Regardless of the selected number of features, all experiments converge to a roughly the same minimum. However, this may be an optimal solution in terms of distances between the feature points, but it is not always optimal in terms of alignment. 
+
+\begin{figure}
+	\centering
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/alignment/waterboy_left}
+		\caption{Reference Image}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/alignment/waterboy_right}
+		\caption{Transform Image}
+	\end{subfigure}
+	\caption{Images of "The Water Boy" by Frédéric-August Bartholdi from the Drexel Collection}
+	\label{fig_waterboy_left_right}
+\end{figure}
+
 \begin{figure}[h]
 	\centering
 	\includegraphics[width=\textwidth]{figures/alignment/error_for_iterations}
 	\caption{The error in pixels per feature for performing $n$ iterations of the iterative closest point algorithm on differently sized sets of the strongest feature points}
 	\label{fig_results_error_plot}
 \end{figure}
+
+Figure \ref{fig_alignment_results} shows the alignment between the transform and reference image when certain numbers of feature points are selected and used to compute the transform. It can be observed that $20$ features is not sufficient to compute a mapping, but that all of the images with more than $40$ features are imperfectly aligned. This is in spite of the fact that iterative closest point converges to a local minimum in terms of displacement error.
+
+From this, it can be concluded that selecting a small, but sufficient number of feature points produces optimal alignment. This is likely due to the fact that additional feature points beyond just the strongest features in the images introduce error by trying to align the noisier parts of the background. A better error metric may be the one shown in Figure \ref{fig_results_alignment_error_plot} which shows the error in terms of the intensity difference. The magnitude of the overlaid image subtracted from the original is used to compute this error metric which more accurately reflects the alignment results shown in Figure \ref{fig_alignment_results}.
 
 \begin{figure}[h]
 	\centering
@@ -499,6 +543,7 @@ Ledesma-Carillo et al. present a hardware efficient algorithm for computing sing
 \end{figure}
 
 \pagebreak
+\clearpage
 
 \bibliographystyle{plain}
 \bibliography{thesis}
