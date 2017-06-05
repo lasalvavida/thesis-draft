@@ -10,7 +10,9 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{subcaption}
-\usepackage{fontspec}
+\usepackage{multicol}
+\usepackage{tabulary}
+%\usepackage{fontspec}
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 
 \usepackage[margin=1.5in]{geometry}
@@ -100,7 +102,7 @@
     \hfill \\
     
     \doublespacing
-    Video fusion functions as a way to combine the important or useful parts of two or more sequences of images. The scenario presented is the use of Laplacian fusion to produce a single video composed of the fields of view of two cameras whose areas of focus differ substantially. This is not a useful real-time strategy unless the frames can be aligned. This thesis presents a system for detecting features using an FPGA implementation of SURF (Speeded-Up Robust Features), and aligning video streams by applying a transform generated from the key features. 
+    Video fusion functions as a way to combine the important or useful parts of two or more sequences of images. The scenario presented is the use of Laplacian fusion to produce a single video composed of the fields of view of two cameras whose areas of focus differ substantially. This is not a useful real-time strategy unless the fields can be aligned. This thesis presents a system for detecting features using an FPGA implementation of SURF (Speeded-Up Robust Features), and aligning video streams by applying a transform generated from the key features. 
 \end{abstract}
 
 \clearpage
@@ -111,7 +113,14 @@
 
 \subsection{Introduction}
 
-The fusion of data from two or more sensors has been well-researched \cite{wang_multi-focus_2011} \cite{li_multi-sensor_1994}, though these approaches typically discuss the process of fusing images which have been pre-aligned. Pre-computed transforms used to align the frames of two cameras are not robust to variations. Some approaches have made use of additional hardware sensors in order to correct against these variations \cite{chappell_exploiting_2006}. The approach presented in this thesis seeks to perform this correction completely in hardware using feature detection on a FPGA.
+The fusion of data from two or more sensors has been well-researched \cite{wang_multi-focus_2011} \cite{li_multi-sensor_1994}, though these approaches typically discuss the process of fusing images which have been pre-aligned. Pre-computed transforms used to align the frames of two cameras are not robust to variations. Some approaches have made use of additional hardware sensors in order to correct against these variations \cite{chappell_exploiting_2006}. The approach presented in this thesis seeks to perform this correction in real time, completely in hardware, using feature detection on a Field Programmable Gate Array (FPGA) using the design shown in Figure \ref{fig_block_diagram}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.8\textwidth]{figures/block/blockdiagram}
+	\caption{Block diagram of the proposed system for alignment and fusion}
+	\label{fig_block_diagram}
+\end{figure}
 
 In order to align two images, one is treated as the reference image, and the other is the transform image which needs to be transformed to be aligned with the reference image. As such the problem can be broken into four major components. 
 
@@ -122,7 +131,7 @@ In order to align two images, one is treated as the reference image, and the oth
 	\item Fusion of the reference and transformed image
 \end{enumerate}
 
-Feature points are detected using some of the techniques from SURF which makes use of Hessian determinants to detect points of interest in multiple scale spaces. High magnitude features are stored in a buffer to be used for computing the transform.
+Feature points are detected using some of the techniques from Speeded-up Robust Features (SURF) which makes use of Hessian determinants to detect points of interest in multiple scale spaces. High magnitude features are stored in a buffer to be used for computing the transform.
 
 Once the feature points for the two images have been computed and stored in the buffer, the points from the transform image are mapped to their closest point in terms of euclidean distance from the reference set. An orthogonal projection from the transform points to the reference points is created with the transform as the unknown. Singular value decomposition is used to compute the pseudo-inverse of the matrix containing the reference points so it can be premultiplied by the matrix containing the transform points. The result of this product is the transform matrix which maps transform points to reference points with the error minimized in a least-squares sense. This process may need to be repeated multiple times to converge to a local error minimum, a process referred to as iterative closest point.
 
@@ -130,7 +139,7 @@ As the image data streams into hardware, the data is buffered into memory. With 
 
 Finally, the technique of Laplacian fusion is used to combine the aligned images. It effectively selects the highest frequency components from the two images in order to create an output image where the sharpest, focused parts of the two images are combined into one image.
 
-This process is applied continuously in real time. As the data from the camera data streams in, it produces a single fused output image for display with minimal latency. The design choice to use a FPGA rather than a GPU or some other software based approach was made due to the advantages gained from operating with embedded hardware, namely higher portability and lower overall power consumption. 
+This process is applied continuously in real time. As the data from the camera data streams in, it produces a single fused output image for display with minimal latency. The design choice to use a FPGA rather than a GPU or some other software based approach was made due to the advantages gained from operating with custom embedded hardware over more rigid architectures. Overall, custom hardware implementations will always beat off-the-shelf components in terms of size, weight, and power consumption.
 
 \subsection{Laplacian Fusion}
 
@@ -277,7 +286,7 @@ The second order derivative used can be computed via convolution of the Gaussian
 	\label{fig_gaussian_surface_plots}
 \end{figure}
 
-The Gaussian second order derivatives can be approximated as $9 \times 9$ kernels with $\sigma=1.2$. These kernels can be seen in Figure \ref{fig_gaussian_kernels}. By adjusting $\sigma$, Hessian determinants can be computed in different scale spaces. This is a concept that SURF draws from the Scale-Invariant Feature Transform (SIFT) from Lowe et al \cite{lowe_distinctive_2004}.
+The Gaussian second order derivatives can be approximated as $9 \times 9$ kernels with $\sigma=1.2$. These kernels can be seen in Figure \ref{fig_gaussian_kernels}. By adjusting $\sigma$, Hessian determinants can be computed in different scale spaces. The approximation of $H$ with $9 \times 9$ kernels is apparent when comparing Figure \ref{fig_gaussian_surface_plots} and Figure \ref{fig_gaussian_kernels}. This is a concept that SURF draws from the Scale-Invariant Feature Transform (SIFT) from Lowe et al \cite{lowe_distinctive_2004}.
 
  By detecting features in different scale spaces, SIFT and by proxy, SURF are robust to changes in scale. SIFT accomplished this by downsampling the image to detect at lower order scale spaces. SURF improved on this approach for speed by instead scaling the kernel.
 
@@ -434,7 +443,23 @@ T_2
 \label{eq_reduced_icp_matrix}
 \end{equation}
 
-The performance of iterative closest point can be further improved by making it more sensitive to errors. Chetverikov introduces a variant of iterative closest point referred to as trimmed iterative closest point (TrICP) \cite{chetverikov_trimmed_2002}. TrICP is more robust to errors by eliminating points that introduce error into the matching. Some detected features points will not have correspondences between images. By eliminating these points, the overall error can be reduced to compute a more accurate transform.
+If scaling is disallowed, and the transformation consists of only a translation and a rotation, this can be reduced further. Consider first computing the centroids of the point sets as in Equation \ref{eq_centroid}.
+
+\begin{equation}
+C = \frac{1}{N}\sum\limits_{i=1}^{N}X(i)
+\label{eq_centroid}
+\end{equation}
+
+Based on the closest point matching, the covariance matrix $H$ can be computed as in Equation \ref{eq_covariance}.
+
+\begin{equation}
+H=\sum\limits_{i=1}^{N} (X(P(i)) - C) \cdot (X_p(i) - C_p)^T
+\label{eq_covariance}
+\end{equation}
+
+The singular value decomposition $U\Sigma V = SVD(H)$ can be used to compute the rotation $R=VU^T$, where the translation is the distance between the centroids.
+
+The performance of iterative closest point can be further improved by making it more sensitive to errors. Chetverikov introduced a variant of iterative closest point referred to as trimmed iterative closest point (TrICP) \cite{chetverikov_trimmed_2002}. TrICP is more robust to errors by eliminating points that introduce error into the matching. Some detected features points will not have correspondences between images. By eliminating these points, the overall error can be reduced to compute a more accurate transform.
 
 \subsection{Singular Value Decomposition (SVD)}
 
@@ -447,23 +472,276 @@ Q^{-1} X = M
 
 $Q$ is not a square matrix, and as such is not invertible, but its pseudoinverse can be used in this instance. The pseudoinverse is computed through the use of singular value decomposition. The use of singular value decomposition to compute the transform is the source of the least squares fitting achieved by iterative closest point.
 
+This is necessary for computing transforms with more degrees of freedom, however for rigid body transformations, it is sufficient to find the singular value decomposition of the covariance matrix $H$, a $2 \times 2$ matrix for which a closed form solution does exist\cite{blinn_consider_1996} and is shown in Equation \ref{eq_svd_decomp}.
+
+\begin{equation}
+\begin{gathered}
+	\begin{bmatrix}
+	A & B \\
+	C & D
+	\end{bmatrix}
+	=
+	\begin{bmatrix}
+	cos\beta & sin\beta \\
+	-sin\beta & cos\beta
+	\end{bmatrix}
+	\begin{bmatrix}
+	w_1 & 0 \\
+	0 & w_2
+	\end{bmatrix}
+	\begin{bmatrix}
+	cos\gamma & sin\gamma \\
+	-sin\gamma & cos\gamma
+	\end{bmatrix}
+	=
+	\begin{bmatrix}
+	E & H \\
+	-H & E
+	\end{bmatrix}
+	+
+	\begin{bmatrix}
+	F & G \\
+	G & -F
+	\end{bmatrix}
+	\\
+	\frac{w_1 + w_2}{2} = \sqrt{E^2 + H^2}
+	\\
+	\frac{w_1 - w_2}{2} = \sqrt{F^2 + G^2}
+	\\
+	\gamma - \beta = tan^{-1}(G/F)
+	\\
+	\gamma + \beta = tan^{-1}(H/E)
+\end{gathered}
+\label{eq_svd_decomp}
+\end{equation}
+
 \subsubsection{SVD Implementations for FPGA Devices}
 
-Ledesma-Carillo et al. present a hardware efficient algorithm for computing singular value decompositions on large matrices uisng one-sided Jacobi rotations \cite{ledesma-carrillo_reconfigurable_2011}.
+Singular value decomposition can be performed on FPGAs by cascading a set of $2 \times 2$ cells \cite{wang_singular_2010}. Ledesma-Carillo et al. present a hardware efficient algorithm for computing singular value decompositions on large matrices using one-sided Jacobi rotations for computing SVD on arbitrary $M \times N$ matrices \cite{ledesma-carrillo_reconfigurable_2011}. One of these approaches is necessary if the sensor fusion must correct for scale or shear. It is worth noting that these approaches both require very high utilization of the FPGA, and as such may be difficult to implement for large numbers of feature points.
+
+In contrast, if only a rigid body transformation is required, then Equation \ref{eq_svd_decomp} can be implemented trivially using CORDIC approximations for the square root and arctangent functions.
 
 \section{Implementation}
 
+The implementation of this design was performed on a ZedBoard Zynq-7000 ARM/FPGA SoC Development Board.
+
+\subsection{Camera Interface}
+
+The design was implemented using a pair of OV7670 VGA cameras. These cameras feature an $I^2C$ interface for configuration, and generate hsync and vsync VGA timing signals along with 8 bits of data. They can be configured to output 16-bit RGB(565) with half of the RGB signal sent on each clock pulse. Configured this way, the camera outputs a resolution of $640$ by $480$ pixels at $30Hz$. 
+
 \subsection{Streaming Kernel Operators}
 
-\subsubsection{Hessian Kernel with Accumulator}
+Performing kernel convolution in real time is complicated by the fact that a pixel has data dependencies on its neighbors. As such, the input data must be buffered until all of the necessary data is available to perform convolution at a given point. The buffer size must be at least $N \times W + M$ where the kernel is $M \times N$ and the image is of width $W$. On FPGAs, this minimally sized buffer can be implemented using LUTRAM, a hardware lookup table. LUTRAM on most FPGAs also has the advantage of being able to act as a set of shift registers. The convolution multipliers and adders can be attached to a single set of cells, and the data can be shifted through the array as it streams. The architecture for this scan chain approach for computing $3 \times 3$ kernel convolution can be seen in Figure \ref{fig_block_scanchain}.
 
-\subsubsection{Box Kernel Approximation of Single Level Laplacian Pyramid}
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.6\textwidth]{figures/block/scanchain}
+	\caption{Block diagram for computing $3 \times 3$ kernel convolution on a data stream using a scan chain}
+	\label{fig_block_scanchain}
+\end{figure}
+
+This scan chain approach to kernel convolution is the faster and more utilization efficient approach to performing kernel convolution on streamed data. However, LUTRAM on most FPGAs is a limited resource, and as such, large kernels and image widths will make it difficult to implement a design. Implementing an LUTRAM scan chain for performing operations on $9 \times 9$ kernels with an image width of $640$ pixels on the Xilinx Zynq XC7Z020-1CLG484 chipset used for this design consumed $96\%$ of the available LUTRAM. Since it was necessary to implement two hessian operators, one for each camera, an approach was devised to utilize the slower, but more plentiful block RAM.
+
+The block RAM has limitations. The data cells inside of the block RAM are not directly accessible. They must be read or written by writing an address to a control port and then waiting for the designated latency. The process of reading and writing to and from block RAM can be pipelined, that is, instructions can be given in sequence and then after the initial latency, data will be read and written every clock cycle. This will be explored in more detail in the design of the Hessian kernel operator.
+
+\subsubsection{Hessian Kernel Operators}
+
+The kernels discussed in this section are the $9 \times 9$ discrete approximations shown in Figure \ref{fig_gaussian_kernels}. If straightforward kernel convolution were to be implemented, it would require sampling all points with non-zero kernel values which would not be realistic for performing these operators in real time. Instead, the integral image is used to reduce the number of required sampling points. Recall that the integral image can be used to compute the area in a rectangle by sampling the corners, adding the bottom-right corner and top-left corner, and subtracting the bottom-left corner and top-right corner. As such, the required sampling points for the SURF kernels are highlighted in Figure \ref{fig_gaussian_integral_kernels}.
+
+\begin{figure}[h]
+	\centering
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_second_order_kernel_xx_integral}
+		\caption{$\frac{\partial^2 G}{\partial x_1^2}$}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_second_order_kernel_xy_integral}
+		\caption{$\frac{\partial^2 G}{\partial x_1 x_2}$}
+	\end{subfigure}
+	\begin{subfigure}[b]{0.3\textwidth}
+		\centering
+		\includegraphics[width=\textwidth]{figures/hessian/gaussian_second_order_kernel_yy_integral}
+		\caption{$\frac{\partial^2 G}{\partial x_2^2}$}
+	\end{subfigure}
+	\caption{$9 \times 9$ SURF kernels with marked integral sampling points}
+	\label{fig_gaussian_integral_kernels}
+\end{figure}
+
+It can be observed in Figure \ref{fig_gaussian_integral_kernels} that the worst-case for the data dependencies is the bottom-right point in $\frac{\partial^2 G}{\partial x_2^2}$. If the Hessian determinant is to be computed with minimal latency, it should be computed when that point becomes available. In order to compute the integral at a point, the integral above, to the left, and to the top-left of the desired point must be sampled. From this, it can be concluded that thirty-four points must be sampled to compute the Hessian determinant (eight from $\frac{\partial^2 G}{\partial x_1^2}$, sixteen from $\frac{\partial^2 G}{\partial x_1 x_2}$, seven from $\frac{\partial^2 G}{\partial x_2^2}$, and three to compute the integral). 
+
+In order to do this in real time, the Hessian determinant must be computable within a pixel clock cycle. Given a resolution of $640$ by $480$ at $30$ frames per second, this is a pixel clock speed of $12.5 MHz$. Recall that block RAM must be addressed and read. In this implementation, block RAM has a latency of three clock cycles. In order to compute the determinant in a single pixel clock cycle, the Hessian block is clocked at $200 Mhz$, giving it $16$ clock cycles for every pixel clock cycle. A $200 Mhz$ clock has a period of only $5ns$ which makes pipelining of instructions very important in order to meet timing. A dual port block RAM was used, with addressing using the lower bits of $y$ to map into a modular address space of $16$ rows. The dual port RAM effectively allows for $32$ read/write operations within the pixel clock period. An LUTRAM cache containing the integral values for the last row up to the top-left point required for the integral image reduces the number of memory reads for required points to $29$, along with a single memory write to place the last value in the cache into the block RAM. The set of pipeline instructions for computing the Hessian determinants can be found in Tables \ref{table_pipeline_1}, \ref{table_pipeline_2}, and \ref{table_pipeline_3}. In these tables, $L$ represents the rectangles that make up the SURF kernels. Its subscripts, such as $L_{xx_n}$ refer to the specific rectangle. $L_{xx}$ is numbered from right to left, $L_{xy}$ is numbered clockwise beginning at the top left, and $L_{yy}$ is numbered from top to bottom referring to what is shown in Figure \ref{fig_gaussian_integral_kernels}.
+
+\begin{table}[h]
+	\centering
+	\caption{Stages 1-8 of pipeline instructions for computing Hessian determinants}
+	\label{table_pipeline_1}
+	\begin{tabulary}{1.0\textwidth}{L|L|L}
+		1. & $\bullet$ Store current (x,y) and value in registers & $\bullet$ Get integral top, left, and corner from cache \\
+		& & $\bullet$ Compute top left and top right addresses for $L_{yy_2}/L_{yy_1}$ \\
+		& & $\bullet$ Write addresses to read top left and top right of $L_{yy_1}/L_{yy_0}$ \\
+		& & $\bullet$ Data ready, bottom right and top right corner of $L_{xx_2}/L_{xx_1}$ \\
+		& & $\bullet$ Compute $L_{xx_0}$ \\
+		\hline
+		
+		2. & $\bullet$ Compute (x,y) bottom right and top left corner for $L_{xy_0}$ & $\bullet$ Write addresses to read top left and top right corner of $L_{yy_2}/L_{yy_1}$ \\
+		& & $\bullet$ Data ready, bottom left and top left corner of $L_{xx_2}$ \\
+		& & $\bullet$ Compute $L_{xx_1}$ \\
+		& & $\bullet$ Compute integral \\
+		\hline
+		
+		3. & $\bullet$ Compute (x,y) bottom left and top right corner for $L_{xy_0}$ & $\bullet$ Data ready, top left and top right corner for $L_{yy_0}$ \\
+		& Compute bottom right and top left addresses for $L_{xy_0}$ & $\bullet$ Compute $L_{xx_2}$ \\
+		\hline
+		
+		4. & $\bullet$ Compute (x,y) bottom right and top left corner for $L_{xy_1}$ & $\bullet$ Data ready, top left and top right corner of $L_{yy_1}/L_{yy_0}$ \\
+		& $\bullet$ Compute bottom left and top right addresses for $L_{xy_0}$ & $\bullet$ Compute $L_{xx}$ \\
+		& $\bullet$ Write addresses to read bottom right and top left of $L_{xy_0}$ & \\
+		\hline
+		
+		5. & $\bullet$ Compute (x,y) bottom left and top right corner for $L_{xy_1}$ & $\bullet$ Data ready, top left and top right corner of $L_{yy_2}/L_{yy_1}$ \\
+		& $\bullet$ Compute bottom right and top left addresses for $L_{xy_1}$ & $\bullet$ Compute $L_{yy_0}$ \\
+		& $\bullet$ Write addresses to read bottom left and top right of $L_{xy_0}$ & \\
+		\hline
+		
+		6. & $\bullet$ Compute (x,y) bottom right and top left corner for $L_{xy_2}$ & $\bullet$ Compute $L_{yy_1}$ \\
+		& $\bullet$ Compute bottom left and top right addresses for $L_{xy_1}$ & \\
+		& $\bullet$ Write addresses to read bottom right and top left of $L_{xy_1}$ & \\
+		\hline 
+		
+		7. & $\bullet$ Compute (x,y) bottom left and top right corner for $L_{xy_2}$ & $\bullet$ Compute $L_{yy_2}$ \\
+		& $\bullet$ Compute above point address for write & \\
+		& $\bullet$ Compute top left address for $L_{xy_2}$ & \\
+		& $\bullet$ Write addresses to read bottom left and top right of $L_{xy_1}$ & \\
+		& $\bullet$ Data ready, bottom right and top left corner of $L_{xy_0}$ & \\
+		\hline
+		
+		8. & $\bullet$ Compute (x,y) bottom right and top left corner for $L_{xy_3}$ & $\bullet$ Shift cache \\
+		& $\bullet$ Compute bottom left and top right addresses for $L_{xy_2}$ & $\bullet$ Compute $L_{yy}$ \\
+		& $\bullet$ Write addresses to write above point and read top left corner of $L_{xy_2}$ & \\
+		& $\bullet$ Data ready, bottom left and top right corner of $L_{xy_0}$ & \\
+		\hline
+	\end{tabulary}
+\end{table}
+
+\begin{table}[h]
+	\centering
+	\caption{Stages 9-13 of pipeline instructions for computing Hessian determinants}
+	\label{table_pipeline_2}
+	\begin{tabulary}{1.0\textwidth}{L|L|L}
+		\hline
+		9. & $\bullet$ Compute (x,y) bottom left and top right corner for $L_{xy_3}$ & \\
+		& $\bullet$ Compute bottom right and top left addresses for $L_{xy_3}$ & \\
+		& $\bullet$ Write addresses to read bottom left and right of $L_{xy_2}$ & \\
+		& $\bullet$ Data ready, bottom right and top left corner of $L_{xy_1}$ & \\
+		& $\bullet$ Compute $L_{xy_0}$ & \\
+		\hline
+		
+		10. & $\bullet$ Compute (x,y) bottom right and top right for $L_{xx_0}$ & $\bullet$ Compute determinant secondary diagonal \\
+		& $\bullet$ Compute bottom left and top right addresses for $L_{xy_3}$ & \\
+		& $\bullet$ Write addresses to read bottom right and top left of $L_{xy_3}$ & \\
+		& $\bullet$ Data ready, bottom left and top right corner of $L_{xy_1}$ & \\
+		\hline
+		
+		11. & $\bullet$ Compute (x,y) bottom right and top right for $L_{xx_1}/L_{xx_0}$ & \\
+		& $\bullet$ Compute bottom right and top right addresses for $L_{xx_0}$ & \\
+		& $\bullet$ Write addresses to read bottom left and top right of $L_{xy_3}$ & \\
+		& $\bullet$ Data ready, bottom right and top left corner of $L_{xy_2}$ & \\
+		& $\bullet$ Compute $L_{xy_1}$ & \\
+		\hline
+		
+		12. & $\bullet$ Compute (x,y) bottom right and top left for $L_{xx_2}/L_{xx_1}$ & \\
+		& $\bullet$ Compute bottom right and top right addresses for $L_{xx_1}/L_{xx_0}$ & \\
+		& $\bullet$ Write addresses to read bottom right and top right for $L_{xx_0}$ & \\
+		& $\bullet$ Data ready, bottom left and top right corner of $L_{xy_2}$ & \\
+		\hline
+		
+		13. & $\bullet$ Compute (x,y) bottom left and top left for $L_{xx_2}$ & $\bullet$ Compute determinant primary diagonal \\
+		& $\bullet$ Compute bottom right and top right addresses for $L_{xx_2}/L_{xx_1}$ & \\
+		& $\bullet$ Write addresses to read bottom right and top right of $L_{xx_1}/L_{xx_0}$ & \\
+		& $\bullet$ Data ready, bottom right and top left corner of $L_{xy_3}$ & \\
+		& $\bullet$ Compute $L_{xy_2}$ & \\
+		\hline
+	\end{tabulary}
+\end{table}
+		
+\begin{table}[h]
+	\centering
+	\caption{Stages 14-16 of pipeline instructions for computing Hessian determinants}
+	\label{table_pipeline_3}
+	\begin{tabulary}{1.0\textwidth}{L|L|L}
+		\hline
+		14. & $\bullet$ Compute (x,y) top left and top right for $L_{yy_0}$ & $\bullet$ Compute determinant \\
+		& $\bullet$ Compute bottom left and top left addresses for $L_{xx_2}$ & \\
+		& $\bullet$ Write addresses to read bottom right and top right of $L_{xx_2}/L_{xx_1}$ & \\
+		& $\bullet$ Data ready, bottom left and top right corner of $L_{xy_3}$ & \\
+		\hline
+		
+		15. & $\bullet$ Compute (x,y) top left and top right for $L_{yy_1}/L_{yy_0}$ & $\bullet$ Absolute value determinant \\
+		& $\bullet$ Compute top left and top right addresses for $L_{yy_0}$ & \\
+		& $\bullet$ Write addresses to read bottom left and top left of $L_{xx_2}$ & \\
+		& $\bullet$ Data ready, bottom right and top right corner of $L_{xx_0}$ & \\
+		& $\bullet$ Compute $L_{xy_3}$ & \\
+		\hline
+		
+		16. & $\bullet$ Compute (x,y) top left and top right for $L_{yy_2}/L_{yy_1}$ & $\bullet$ Write determinant \\
+		& $\bullet$ Compute top left and top right addresses for $L_{yy_1}/L_{yy_0}$ & \\
+		& $\bullet$ Write addresses to read top left and top right corner of $L_{yy_0}$ & \\
+		& $\bullet$ Compute $L_{xy}$ & \\
+	\end{tabulary}
+\end{table}
+
+When computed in this way, the Hessian determinant at a point will be outputted at the end of the next pixel clock cycle continuously as the data stream passes through the system. It is worth noting that this implementation does not need to be modified to compute Hessian determinants in different scale spaces. Larger kernels still have the same number of points that must be sampled, but the required block RAM for the design does grow with the kernel size.
+
+\subsubsection{Average Filter Approximation of Single Level Laplacian Pyramid}
+
+In this design, only a single level of the Laplacian pyramid is used for fusion. In a single level, a Gaussian blur is applied to the image. It is downsampled, upsampled, and subtracted from the original. The downsampling and upsampling in a single level can be approximated as an average filter without performing the costly operation of modifying the resolution of the image. In this design, the Gaussian and average filters were implemented as a set of scan chains to perform $3 \times 3$ kernel convolution.
+
+\subsubsection{Application of Non-maximum Suppression}
+
+Though not a kernel operator, non-maximum suppression depends on the data points around it. Non-maximum suppression is to be applied to the Hessian determinant values in order to reduce them to a smaller, more precise set of features. In a $3 \times 3$ neighborhood, if the central pixel is not the maximum, it is set to zero. In this way, only the peak features remain for processing. The $3x3$ neighborhood search was implemented as a $3 \times 3$ scan chain with comparison operators.
 
 \subsection{Computation of Transform from Detected Features}
 
+As features are generated, they are passed into a feature buffer as a tuple of their magnitude, x, and y coordinates. The buffer is made up of bubble-sort cells as shown in Figure \ref{fig_bubblesort}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.8\textwidth]{figures/block/bubblesort}
+	\caption{Bubble-sort architecture of the feature buffer}
+	\label{fig_bubblesort}
+\end{figure}
+
+On the rising edge of the clock, the even cells swap values with their neighbor to the left if the cell contains a greater value than its neighbor. On the falling edge, the odd cells do the same. In this way, the highest valued elements propagate to the top of the buffer, and lower valued elements are dropped out of the bottom. The comparison criteria for this operation is the Hessian magnitude, and the sort is active for as long as features are being generated. At the end of the frame, the buffer contains only the points with the highest Hessian magnitudes.
+
+Once the points have been collected, the transform set is compared to the reference set and correspondences are assigned based on euclidean distance to find the closest point. This is done via a brute-force search. Every point is compared to every other, and the closest one emerges. The architecture of this comparison is shown in Figure \ref{fig_comparison}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.8\textwidth]{figures/block/comparison}
+	\caption{Feature buffer brute-force comparison}
+	\label{fig_comparison}
+\end{figure}
+
+For low numbers of feature points, the inefficiency of brute-force search is mitigated by its simplicity. In hardware, a brute force comparison like this does not suffer from additional time complexity since the comparisons all happen in parallel. However, the space complexity and fanout of the circuit goes up exponentially as more cells are added.
+
 \subsection{Application of Transform to Real-Time Data}
 
+The transform is applied through the use of a frame buffer. The reference image remains fixed and is outputted as normal. However, the address for the transform image is decomposed into x and y coordinates. This is multiplied through the transform, and the transformed coordinates are used to select pixels from the frame buffer. The reference pixel and transform pixel are then fused together to create the output stream.
+
 \section{Results}
+
+\subsection{Detecting feature points in real time}
+
+The system for detecting feature points in real time is demonstrated through a picture of the system output shown in Figure \ref{fig_pic_features}. Detected feature points above a threshold are marked in white, showing the detection of strong changes in gradient, particularly evident around the eyes and nose.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.8\textwidth]{figures/pictures/features}
+	\caption{Real-time capture of Hessian feature points}
+	\label{fig_pic_features}
+\end{figure}
 
 \subsection{Selecting an optimal number of feature points}
 
