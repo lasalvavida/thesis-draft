@@ -334,7 +334,7 @@ This makes the computation of the Hessian matrix scale only in terms of the imag
 
 \subsubsection{SURF Implementations for FPGA Devices}
 
-The relatively low computational complexity makes SURF a popular choice for FPGA applications. Battezzati et al. present an architecture using accumulators for computing the integral image pipelined through the Hessian computation and storing detected feature points in a FIFO cache \cite{battezzati_surf_2012}. These are matched against a stored set of feature points. Chen et al. present improvements on this approach by parallelizing the computation of different scale spaces \cite{chen_fpga-based_2016}. The implementation in this thesis follows these approaches with some additional improvements for speed based on the use case of matching against another image rather than a stored set of features.
+The relatively low computational complexity makes SURF a popular choice for FPGA applications. Battezzati et al. present an architecture using accumulators for computing the integral image pipelined through the Hessian computation and storing detected feature points in a first in, first out (FIFO) cache \cite{battezzati_surf_2012}. These are matched against a stored set of feature points. Chen et al. present improvements on this approach by parallelizing the computation of different scale spaces \cite{chen_fpga-based_2016}. The implementation in this thesis follows these approaches with some additional improvements for speed based on the use case of matching against another image rather than a stored set of features.
 
 \subsection{Iterative Closest Point Algorithm}
 
@@ -578,6 +578,9 @@ In order to do this in real time, the Hessian determinant must be computable wit
 	\caption{Stages 1-8 of pipeline instructions for computing Hessian determinants}
 	\label{table_pipeline_1}
 	\begin{tabulary}{1.0\textwidth}{L|L|L}
+		Cycle & Instruction \#1 & Instruction \#2 \\
+		\hline
+		
 		1. & $\bullet$ Store current (x,y) and value in registers & $\bullet$ Get integral top, left, and corner from cache \\
 		& & $\bullet$ Compute top left and top right addresses for $L_{yy_2}/L_{yy_1}$ \\
 		& & $\bullet$ Write addresses to read top left and top right of $L_{yy_1}/L_{yy_0}$ \\
@@ -700,7 +703,7 @@ In this design, only a single level of the Laplacian pyramid is used for fusion.
 
 \subsubsection{Application of Non-maximum Suppression}
 
-Though not a kernel operator, non-maximum suppression depends on the data points around it. Non-maximum suppression is to be applied to the Hessian determinant values in order to reduce them to a smaller, more precise set of features. In a $3 \times 3$ neighborhood, if the central pixel is not the maximum, it is set to zero. In this way, only the peak features remain for processing. The $3x3$ neighborhood search was implemented as a $3 \times 3$ scan chain with comparison operators.
+Though not a kernel operator, non-maximum suppression depends on the data points around it. Non-maximum suppression is to be applied to the Hessian determinant values in order to reduce them to a smaller, more precise set of features. In a $3$ by $3$ neighborhood, if the central pixel is not the maximum, it is set to zero. In this way, only the peak features remain for processing. The $3x3$ neighborhood search was implemented as a $3 \times 3$ scan chain with comparison operators.
 
 \subsection{Computation of Transform from Detected Features}
 
@@ -726,9 +729,22 @@ Once the points have been collected, the transform set is compared to the refere
 
 For low numbers of feature points, the inefficiency of brute-force search is mitigated by its simplicity. In hardware, a brute force comparison like this does not suffer from additional time complexity since the comparisons all happen in parallel. However, the space complexity and fanout of the circuit goes up exponentially as more cells are added.
 
+It should be intuitive that this architecture is only useful for small numbers of feature points. The high fanout of the brute force comparison quickly becomes unmanageable to route in most designs with more than a handful of features. In the case that this becomes difficult, it is possible to trade the space complexity of the design for time complexity by making the computation iterative as in Figure \ref{fig_comparison_iter}.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.8\textwidth]{figures/block/comparison_iter}
+	\caption{Feature buffer iterative comparison}
+	\label{fig_comparison_iter}
+\end{figure}
+
+In this approach, the a point from the reference set is loaded into register A. Then, each point in the transform set is loaded into register B in turn. If the distance between the loaded value and the value in register A is less than the distance between the value stored in the match register and register A, then the loaded value from register B is placed into the match register. This is repeated for all elements in the reference set to find their closest points in the transform set.
+
 \subsection{Application of Transform to Real-Time Data}
 
-The transform is applied through the use of a frame buffer. The reference image remains fixed and is outputted as normal. However, the address for the transform image is decomposed into x and y coordinates. This is multiplied through the transform, and the transformed coordinates are used to select pixels from the frame buffer. The reference pixel and transform pixel are then fused together to create the output stream.
+The transform is applied through the use of a frame buffer. The reference image remains fixed and is outputted as normal. However, the address for the transform image is decomposed into x and y coordinates. This is multiplied through the computed transform, and the transformed coordinates are used to select pixels from the frame buffer. The reference pixel and transform pixel are then fused together to create the output stream.
+
+The transform is recomputed at the end of the frame from the detected features and then applied to the next generation of incoming data. In this way, the transform is additively refined as in iterative closest point. The transform computed for a frame is concatenated with the transform from the last frame, eventually converging to a local error minimum for alignment in a least squares sense. 
 
 \section{Results}
 
@@ -820,8 +836,62 @@ From this, it can be concluded that selecting a small, but sufficient number of 
 	\label{fig_results_alignment_error_plot}
 \end{figure}
 
+\subsection{Implemented Design Details}
+
+The implemented design for detecting feature points and transform the data for alignment and fusion can be seen in Figure \ref{fig_implemented}. The timing, power, and utilization data can be found in Tables \ref{table_timing}, \ref{table_power}, and \ref{table_utilization} respectively.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.8\textwidth]{figures/pictures/implemented}
+	\caption{FPGA implemented design for live fusion using feature point detection}
+	\label{fig_implemented}
+\end{figure}
+
+\begin{table}[h]
+	\centering
+	\caption{Timing data for the implemented design}
+	\begin{tabular}{l|l}
+		Worst Case Slack (Setup) & $+0.081 ns$ \\
+		\hline
+		Worst Case Slack (Hold) & $+0.047 ns$ \\
+		\hline
+		Total \# of Endpoints & $4495$
+	\end{tabular}
+	\label{table_timing}
+\end{table}
+
+\begin{table}[h]
+	\centering
+	\caption{Power data for the implemented design}
+	\begin{tabular}{l|l}
+		Total On-Chip Power & $0.615 W$ \\
+		\hline
+		Junction Temperature & $32.1 ^{\circ} C$ 
+	\end{tabular}
+	\label{table_power}
+\end{table}
+
+\begin{table}[h]
+	\centering
+	\caption{Utilization data for the implemented design}
+	\begin{tabular}{l|l}
+		Look-up Table & $8758$ \\
+		\hline
+		Flip-flops & $6645$ \\
+		\hline
+		Block-RAM & $22$
+	\end{tabular}
+	\label{table_utilization}
+\end{table}
+
+\section{Conclusions}
+
+The approach presented is capable of performing the task stated in the abstract in real time. Careful pipelining in a novel architecture for the computing of the hessian determinants makes this possible. The treatment of each frame as a generation of feature points to be transformed to a local error minimum as opposed to a more rigid architecture of performing multiple iterations on one feature set helps alleviate the overhead of the design, and make it realizable. The available chipset was not of sufficient size to perform the larger corrections of scale and shear due to the prohibitive nature of instantiating large arrays of SVD solving cells. However, on a more robust chipset, scale and shear should also be correctable factors, as well as giving the ability to compute the transform from a larger set of feature points.
+
 \pagebreak
 \clearpage
+
+\singlespacing
 
 \bibliographystyle{plain}
 \bibliography{thesis}
