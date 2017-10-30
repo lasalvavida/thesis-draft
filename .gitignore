@@ -8,4 +8,5 @@
 *.blg
 *.pdf
 !thesis.pdf
+!thesis-acm.pdf
 !Thesis_Manual_2016-17.pdf

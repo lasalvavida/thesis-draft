@@ -1,113 +1,24 @@
-\documentclass{article}
-\usepackage[utf8]{inputenc}
+\documentclass[sigconf]{acmart/acmart}
 \usepackage{setspace}
 \usepackage{graphicx}
 \usepackage{titling}
 \usepackage{textcomp}
-\usepackage[nottoc]{tocbibind}
-\usepackage{tocloft}
 \usepackage{natbib}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{subcaption}
 \usepackage{multicol}
 \usepackage{tabulary}
-%\usepackage{fontspec}
-\renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
-
-\usepackage[margin=1.5in]{geometry}
-\addtolength{\topmargin}{-0.5in}
-\addtolength{\textheight}{1.0in}
-
-\doublespacing
-\newenvironment{bottompar}{\par\vspace*{\fill}}{}
-
-\renewcommand{\contentsname}{\center{Table of Contents}}
 
 \title{Real-time Video Alignment and Fusion Using Feature Detection on FPGA Devices}
 
-\author{Robert Haywood Taglang}
+\author{Robert Taglang}
 
 \begin{document}
-\pagenumbering{gobble}
-\begin{titlingpage}
-    \vspace*{\fill}
-    \begin{center}
-        \textbf{\thetitle}
-        
-        \hfill \\
-        \hfill \\
-        
-        A Thesis \\
-        Submitted to the Faculty \\
-        of \\
-        Drexel University \\
-        by \\
-        \theauthor \\
-        in partial fulfillment of the \\
-        requirements for the degree \\
-        of \\
-        Master of Science in Computer Engineering \\
-        June 2017 \\
-    \end{center}
-    
-    \vspace*{\fill}
-    
-    \begin{figure*}[!b]
-    	\centering
-       	\includegraphics[width=0.35\textwidth]{drexel-vert-blue}
-    \end{figure*}
-\end{titlingpage}
-
-\begin{center}
-	\vspace*{\fill}
-	
-	\textcopyright\  Copyright 2017
-	
-	Robert H. Taglang. All Rights Reserved.
-	
-	\vspace*{\fill}
-\end{center}
-\clearpage
-
-\pagenumbering{roman}
-\setcounter{page}{2}
-\begin{center}
-    \tableofcontents
-    \clearpage
-    
-    \listoftables
-    \clearpage
-    
-    \listoffigures
-\end{center}
-\clearpage
-
-\hfill \\
-\hfill \\
-\hfill \\
-\hfill \\
-
-\addcontentsline{toc}{section}{Abstract}
 
 \begin{abstract}
-    \singlespacing
-    \centering
-    \thetitle \\
-    \theauthor \\
-    Prawat Nagvajara, Ph.D. \\
-    
-    \hfill \\
-    \hfill \\
-    \hfill \\
-    
-    \doublespacing
     Video fusion functions as a way to combine the important or useful parts of two or more sequences of images. The scenario presented is the use of Laplacian fusion to produce a single video composed of the fields of view of two cameras whose areas of focus differ substantially. This is not a useful real-time strategy unless the fields can be aligned. This thesis presents a system for detecting features using an FPGA implementation of SURF (Speeded-Up Robust Features), and aligning video streams by applying a transform generated from the key features. 
 \end{abstract}
-
-\clearpage
-
-\pagenumbering{arabic}
 
 \section{Background}
 
@@ -890,8 +801,6 @@ The approach presented is capable of performing the task stated in the abstract 
 
 \pagebreak
 \clearpage
-
-\singlespacing
 
 \bibliographystyle{plain}
 \bibliography{thesis}
