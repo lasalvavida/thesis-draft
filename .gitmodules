@@ -1,0 +1,3 @@
+[submodule "acmart"]
+	path = acmart
+	url = git@github.com:borisveytsman/acmart.git
